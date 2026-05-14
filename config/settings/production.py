@@ -7,6 +7,12 @@ from .base import LOGGING
 
 DEBUG = False
 
+# Retirer debug_toolbar si présent (sécurité)
+INSTALLED_APPS = [
+    app for app in INSTALLED_APPS if "debug_toolbar" not in app and "django_extensions" not in app
+]
+MIDDLEWARE = [mw for mw in MIDDLEWARE if "debug_toolbar" not in mw]
+
 # Sécurité — durcissement complet
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31_536_000  # 1 an
