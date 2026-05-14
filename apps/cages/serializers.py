@@ -68,8 +68,8 @@ class VolereCageSerializer(serializers.Serializer):
 
 
 class CageOccupationSerializer(serializers.ModelSerializer):
-    pigeon = serializers.PrimaryKeyRelatedField(read_only=True)
-    couple = serializers.PrimaryKeyRelatedField(read_only=True)
+    pigeon: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(read_only=True)
+    couple: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = CageOccupation

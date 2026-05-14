@@ -1,0 +1,1111 @@
+{
+  "info": {
+    "name": "Kàff GUI API",
+    "description": "API REST de gestion de volière colombophile.\n\n## Authentification\n\nL'API utilise JWT (JSON Web Tokens) avec authentification 2FA (TOTP).\n\n### Flux d'authentification\n\n1. **Inscription** : `POST /api/v1/auth/register/` - Retourne un QR code TOTP\n2. **Confirmation TOTP** : `POST /api/v1/auth/2fa/confirm/` - Active le compte\n3. **Connexion** : `POST /api/v1/auth/login/` - Retourne access + refresh tokens\n4. **Utilisation** : Ajouter `Authorization: Bearer <access_token>` dans les headers\n5. **Refresh** : `POST /api/v1/auth/token/refresh/` - Obtenir un nouveau access token\n\n### Sécurité\n\n- Tokens access : 15 minutes de validité\n- Tokens refresh : 7 jours de validité avec rotation\n- Rate limiting : 300 req/min pour utilisateurs authentifiés\n- Protection brute-force : 5 tentatives max, cooldown 5 min\n\nVoir le cahier des charges et les user stories pour le détail métier.",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /api/v1/auth/2fa/verify/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/2fa/verify/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "2fa",
+                "verify"
+              ]
+            },
+            "description": "Étape 2 du login. Reçoit le `challenge_token` (émis par /auth/login/) et le code 6 chiffres de l'Authenticator. Émet les tokens JWT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/TOTPVerifyRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/login/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Étape 1 du login. Reçoit `encrypted_payload` (sealed box) contenant {email, password}. Valide les credentials, déclenche django-axes (5 échecs/5min = lockout). Renvoie un `challenge_token` à utiliser dans `/auth/2fa/verify/` avec le code TOTP.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/LoginRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/logout/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Blackliste le refresh token fourni (US-AUTH-03).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/LogoutRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/auth/me/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Retourne le profil de l'utilisateur authentifié."
+          }
+        },
+        {
+          "name": "GET /api/v1/auth/public-key/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/public-key/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "public-key"
+              ]
+            },
+            "description": "Renvoie la clé publique X25519 utilisée pour chiffrer les credentials via libsodium sealed box. Le mobile doit re-fetcher si une requête de login/register échoue en 410 Gone."
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/refresh/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Échange un refresh token contre un nouvel access (+ rotation).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/TokenRefreshRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/register/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Étape 1 d'inscription. Reçoit `encrypted_payload` (sealed box base64) contenant {email, password, first_name, last_name}. Crée le user et renvoie le QR code à scanner dans l'app Authenticator + un `challenge_token` à utiliser dans `/auth/register/confirm/`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/RegisterRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/register/confirm/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register/confirm/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                "confirm"
+              ]
+            },
+            "description": "Confirme l'enrôlement 2FA en validant le 1er code généré par l'Authenticator. Émet les tokens JWT — l'utilisateur est désormais authentifié.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/TOTPVerifyRequest\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cages",
+      "item": [
+        {
+          "name": "GET /api/v1/cages/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/cages/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CageCreateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/cages/{id}/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "PUT /api/v1/cages/{id}/",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CageRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/cages/{id}/",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/PatchedCageRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/cages/{id}/",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/cages/{id}/affecter-couple/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/affecter-couple/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}",
+                "affecter-couple"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/AffecterCoupleInputRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/cages/{id}/affecter-pigeon/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/affecter-pigeon/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}",
+                "affecter-pigeon"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/AffecterPigeonInputRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/cages/{id}/liberer/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/{id}/liberer/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "{id}",
+                "liberer"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CageRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/cages/volet/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cages/volet/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cages",
+                "volet"
+              ]
+            },
+            "description": "Renvoie l'état de toutes les cages avec leur occupant courant. Code couleur : vert=libre, rouge=pigeon, orange=couple. Optimisé en 1 requête + 1 prefetch (zéro N+1)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Couples",
+      "item": [
+        {
+          "name": "GET /api/v1/couples/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/couples/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "couples"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/couples/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/couples/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "couples"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CoupleCreateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/couples/{id}/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/couples/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "couples",
+                "{id}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/couples/{id}/rompre/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/couples/{id}/rompre/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "couples",
+                "{id}",
+                "rompre"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CoupleRompreRequest\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "GET /api/v1/dashboard/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard"
+              ]
+            },
+            "description": "Retourne les statistiques agrégées de la volière"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pigeons",
+      "item": [
+        {
+          "name": "GET /api/v1/pigeons/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie."
+          }
+        },
+        {
+          "name": "POST /api/v1/pigeons/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/PigeonCreateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/pigeons/{id}/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie."
+          }
+        },
+        {
+          "name": "PUT /api/v1/pigeons/{id}/",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/PigeonUpdateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/pigeons/{id}/",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/PatchedPigeonUpdateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/pigeons/{id}/declarer-deces/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/declarer-deces/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}",
+                "declarer-deces"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/DecesInputRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/pigeons/{id}/declarer-perte/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/declarer-perte/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}",
+                "declarer-perte"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/PerteInputRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/pigeons/{id}/genealogy/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/genealogy/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}",
+                "genealogy"
+              ]
+            },
+            "description": "Arbre généalogique : père, mère, descendants directs (US-REP-03)."
+          }
+        },
+        {
+          "name": "POST /api/v1/pigeons/{id}/vendre/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pigeons/{id}/vendre/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pigeons",
+                "{id}",
+                "vendre"
+              ]
+            },
+            "description": "CRUD pigeons + actions de sortie + généalogie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/VenteInputRequest\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reproductions",
+      "item": [
+        {
+          "name": "GET /api/v1/reproductions/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reproductions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reproductions"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/reproductions/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reproductions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reproductions"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/ReproductionCreateRequest\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/reproductions/{id}/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reproductions/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reproductions",
+                "{id}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /api/v1/reproductions/{id}/pigeonneaux/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reproductions/{id}/pigeonneaux/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reproductions",
+                "{id}",
+                "pigeonneaux"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"$ref\": \"#/components/schemas/CreerPigeonneauxInputRequest\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sorties",
+      "item": [
+        {
+          "name": "GET /api/v1/sorties/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sorties/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sorties"
+              ]
+            },
+            "description": "RM-S04 — sorties irréversibles, lecture seule via cette ressource."
+          }
+        },
+        {
+          "name": "GET /api/v1/sorties/{id}/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sorties/{id}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sorties",
+                "{id}"
+              ]
+            },
+            "description": "RM-S04 — sorties irréversibles, lecture seule via cette ressource."
+          }
+        }
+      ]
+    }
+  ]
+}

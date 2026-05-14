@@ -29,8 +29,13 @@ class SortieViewSet(
     ordering = ("-date_sortie",)
 
     def get_queryset(self) -> QuerySet[Sortie]:
+        # Pour la génération du schéma OpenAPI
+        if getattr(self, "swagger_fake_view", False):
+            return Sortie.objects.none()
+        user = self.request.user
+        assert user.is_authenticated  # Type guard pour mypy (IsAuthenticated garantit cela)
         return (
-            Sortie.objects.filter(pigeon__user=self.request.user)
+            Sortie.objects.filter(pigeon__user=user)
             .select_related("pigeon")
             .order_by("-date_sortie", "-created_at")
         )

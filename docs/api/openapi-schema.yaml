@@ -1,0 +1,2595 @@
+openapi: 3.0.3
+info:
+  title: Kàff GUI API
+  version: 1.0.0
+  description: |-
+    API REST de gestion de volière colombophile.
+
+    ## Authentification
+
+    L'API utilise JWT (JSON Web Tokens) avec authentification 2FA (TOTP).
+
+    ### Flux d'authentification
+
+    1. **Inscription** : `POST /api/v1/auth/register/` - Retourne un QR code TOTP
+    2. **Confirmation TOTP** : `POST /api/v1/auth/2fa/confirm/` - Active le compte
+    3. **Connexion** : `POST /api/v1/auth/login/` - Retourne access + refresh tokens
+    4. **Utilisation** : Ajouter `Authorization: Bearer <access_token>` dans les headers
+    5. **Refresh** : `POST /api/v1/auth/token/refresh/` - Obtenir un nouveau access token
+
+    ### Sécurité
+
+    - Tokens access : 15 minutes de validité
+    - Tokens refresh : 7 jours de validité avec rotation
+    - Rate limiting : 300 req/min pour utilisateurs authentifiés
+    - Protection brute-force : 5 tentatives max, cooldown 5 min
+
+    Voir le cahier des charges et les user stories pour le détail métier.
+  contact:
+    name: Serigne Mourtalla Syll
+    email: serignemourtallasyll86@gmail.com
+  license:
+    name: Proprietary
+paths:
+  /api/v1/auth/2fa/verify/:
+    post:
+      operationId: auth_login_2fa
+      description: Étape 2 du login. Reçoit le `challenge_token` (émis par /auth/login/)
+        et le code 6 chiffres de l'Authenticator. Émet les tokens JWT.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatedResponse'
+          description: ''
+  /api/v1/auth/login/:
+    post:
+      operationId: auth_login
+      description: Étape 1 du login. Reçoit `encrypted_payload` (sealed box) contenant
+        {email, password}. Valide les credentials, déclenche django-axes (5 échecs/5min
+        = lockout). Renvoie un `challenge_token` à utiliser dans `/auth/2fa/verify/`
+        avec le code TOTP.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginStep1Response'
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout
+      description: Blackliste le refresh token fourni (US-AUTH-03).
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me/:
+    get:
+      operationId: auth_me
+      description: Retourne le profil de l'utilisateur authentifié.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/v1/auth/public-key/:
+    get:
+      operationId: auth_public_key
+      description: Renvoie la clé publique X25519 utilisée pour chiffrer les credentials
+        via libsodium sealed box. Le mobile doit re-fetcher si une requête de login/register
+        échoue en 410 Gone.
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicKeyResponse'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: auth_refresh
+      description: Échange un refresh token contre un nouvel access (+ rotation).
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      security:
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: auth_register
+      description: Étape 1 d'inscription. Reçoit `encrypted_payload` (sealed box base64)
+        contenant {email, password, first_name, last_name}. Crée le user et renvoie
+        le QR code à scanner dans l'app Authenticator + un `challenge_token` à utiliser
+        dans `/auth/register/confirm/`.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResponse'
+          description: ''
+  /api/v1/auth/register/confirm/:
+    post:
+      operationId: auth_register_confirm
+      description: Confirme l'enrôlement 2FA en validant le 1er code généré par l'Authenticator.
+        Émet les tokens JWT — l'utilisateur est désormais authentifié.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatedResponse'
+          description: ''
+  /api/v1/cages/:
+    get:
+      operationId: cages_list
+      parameters:
+      - in: query
+        name: numero
+        schema:
+          type: string
+      - in: query
+        name: numero__icontains
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut_occupation
+        schema:
+          type: string
+          enum:
+          - LIBRE
+          - OCCUPE_COUPLE
+          - OCCUPE_PIGEON
+        description: |-
+          * `LIBRE` - Libre
+          * `OCCUPE_PIGEON` - Occupée par un pigeon
+          * `OCCUPE_COUPLE` - Occupée par un couple
+      - in: query
+        name: statut_occupation__in
+        schema:
+          type: array
+          items:
+            type: string
+        description: Les valeurs multiples doivent être séparées par des virgules.
+        explode: false
+        style: form
+      tags:
+      - cages
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCageList'
+          description: ''
+    post:
+      operationId: cages_create
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CageCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CageCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CageCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CageCreate'
+          description: ''
+  /api/v1/cages/{id}/:
+    get:
+      operationId: cages_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+    put:
+      operationId: cages_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+    patch:
+      operationId: cages_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCageRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCageRequest'
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+    delete:
+      operationId: cages_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/cages/{id}/affecter-couple/:
+    post:
+      operationId: cages_affecter_couple_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AffecterCoupleInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AffecterCoupleInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AffecterCoupleInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+  /api/v1/cages/{id}/affecter-pigeon/:
+    post:
+      operationId: cages_affecter_pigeon_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AffecterPigeonInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AffecterPigeonInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AffecterPigeonInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+  /api/v1/cages/{id}/liberer/:
+    post:
+      operationId: cages_liberer_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Cage.
+        required: true
+      tags:
+      - cages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CageRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cage'
+          description: ''
+  /api/v1/cages/volet/:
+    get:
+      operationId: cages_volet_list
+      description: 'Renvoie l''état de toutes les cages avec leur occupant courant.
+        Code couleur : vert=libre, rouge=pigeon, orange=couple. Optimisé en 1 requête
+        + 1 prefetch (zéro N+1).'
+      parameters:
+      - in: query
+        name: numero
+        schema:
+          type: string
+      - in: query
+        name: numero__icontains
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut_occupation
+        schema:
+          type: string
+          enum:
+          - LIBRE
+          - OCCUPE_COUPLE
+          - OCCUPE_PIGEON
+        description: |-
+          * `LIBRE` - Libre
+          * `OCCUPE_PIGEON` - Occupée par un pigeon
+          * `OCCUPE_COUPLE` - Occupée par un couple
+      - in: query
+        name: statut_occupation__in
+        schema:
+          type: array
+          items:
+            type: string
+        description: Les valeurs multiples doivent être séparées par des virgules.
+        explode: false
+        style: form
+      tags:
+      - cages
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVolereCageList'
+          description: ''
+  /api/v1/couples/:
+    get:
+      operationId: couples_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: statut
+        schema:
+          type: string
+          enum:
+          - ACTIF
+          - DISSOUS
+        description: |-
+          * `ACTIF` - Actif
+          * `DISSOUS` - Dissous
+      - in: query
+        name: statut__in
+        schema:
+          type: array
+          items:
+            type: string
+        description: Les valeurs multiples doivent être séparées par des virgules.
+        explode: false
+        style: form
+      tags:
+      - couples
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCoupleListList'
+          description: ''
+    post:
+      operationId: couples_create
+      tags:
+      - couples
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoupleCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CoupleCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CoupleCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoupleCreate'
+          description: ''
+  /api/v1/couples/{id}/:
+    get:
+      operationId: couples_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Couple.
+        required: true
+      tags:
+      - couples
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoupleList'
+          description: ''
+  /api/v1/couples/{id}/rompre/:
+    post:
+      operationId: couples_rompre_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Couple.
+        required: true
+      tags:
+      - couples
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoupleRompreRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CoupleRompreRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CoupleRompreRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoupleList'
+          description: ''
+  /api/v1/dashboard/:
+    get:
+      operationId: dashboard_retrieve
+      description: Retourne les statistiques agrégées de la volière
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+          description: ''
+  /api/v1/pigeons/:
+    get:
+      operationId: pigeons_list
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: query
+        name: disponible
+        schema:
+          type: boolean
+        description: Disponibles (ACTIF, sans couple, sans cage)
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: race
+        schema:
+          type: string
+      - in: query
+        name: race__icontains
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: sexe
+        schema:
+          type: string
+          enum:
+          - FEMALE
+          - MALE
+        description: |-
+          * `MALE` - Mâle
+          * `FEMALE` - Femelle
+      - in: query
+        name: statut
+        schema:
+          type: string
+          enum:
+          - ACTIF
+          - MORT
+          - PERDU
+          - VENDU
+        description: |-
+          * `ACTIF` - Actif
+          * `VENDU` - Vendu
+          * `MORT` - Mort
+          * `PERDU` - Perdu
+      - in: query
+        name: statut__in
+        schema:
+          type: array
+          items:
+            type: string
+        description: Les valeurs multiples doivent être séparées par des virgules.
+        explode: false
+        style: form
+      tags:
+      - pigeons
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPigeonListList'
+          description: ''
+    post:
+      operationId: pigeons_create
+      description: CRUD pigeons + actions de sortie + généalogie.
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PigeonCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PigeonCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PigeonCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonCreate'
+          description: ''
+  /api/v1/pigeons/{id}/:
+    get:
+      operationId: pigeons_retrieve
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonDetail'
+          description: ''
+    put:
+      operationId: pigeons_update
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PigeonUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PigeonUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PigeonUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonUpdate'
+          description: ''
+    patch:
+      operationId: pigeons_partial_update
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPigeonUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPigeonUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPigeonUpdateRequest'
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonUpdate'
+          description: ''
+  /api/v1/pigeons/{id}/declarer-deces/:
+    post:
+      operationId: pigeons_declarer_deces_create
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecesInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DecesInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DecesInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonDetail'
+          description: ''
+  /api/v1/pigeons/{id}/declarer-perte/:
+    post:
+      operationId: pigeons_declarer_perte_create
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerteInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerteInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerteInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonDetail'
+          description: ''
+  /api/v1/pigeons/{id}/genealogy/:
+    get:
+      operationId: pigeons_genealogy_retrieve
+      description: 'Arbre généalogique : père, mère, descendants directs (US-REP-03).'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Genealogy'
+          description: ''
+  /api/v1/pigeons/{id}/vendre/:
+    post:
+      operationId: pigeons_vendre_create
+      description: CRUD pigeons + actions de sortie + généalogie.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Pigeon.
+        required: true
+      tags:
+      - pigeons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenteInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VenteInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VenteInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PigeonDetail'
+          description: ''
+  /api/v1/reproductions/:
+    get:
+      operationId: reproductions_list
+      parameters:
+      - in: query
+        name: couple
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - reproductions
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReproductionList'
+          description: ''
+    post:
+      operationId: reproductions_create
+      tags:
+      - reproductions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReproductionCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReproductionCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReproductionCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReproductionCreate'
+          description: ''
+  /api/v1/reproductions/{id}/:
+    get:
+      operationId: reproductions_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Reproduction.
+        required: true
+      tags:
+      - reproductions
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reproduction'
+          description: ''
+  /api/v1/reproductions/{id}/pigeonneaux/:
+    post:
+      operationId: reproductions_pigeonneaux_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Reproduction.
+        required: true
+      tags:
+      - reproductions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreerPigeonneauxInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreerPigeonneauxInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreerPigeonneauxInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reproduction'
+          description: ''
+  /api/v1/sorties/:
+    get:
+      operationId: sorties_list
+      description: RM-S04 — sorties irréversibles, lecture seule via cette ressource.
+      parameters:
+      - in: query
+        name: date_sortie
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_sortie__gte
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_sortie__lte
+        schema:
+          type: string
+          format: date
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type_sortie
+        schema:
+          type: string
+          enum:
+          - DECES
+          - PERTE
+          - VENTE
+        description: |-
+          * `VENTE` - Vente
+          * `DECES` - Décès
+          * `PERTE` - Perte
+      - in: query
+        name: type_sortie__in
+        schema:
+          type: array
+          items:
+            type: string
+        description: Les valeurs multiples doivent être séparées par des virgules.
+        explode: false
+        style: form
+      tags:
+      - sorties
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSortieList'
+          description: ''
+  /api/v1/sorties/{id}/:
+    get:
+      operationId: sorties_retrieve
+      description: RM-S04 — sorties irréversibles, lecture seule via cette ressource.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+          title: Identifiant
+        description: A UUID string identifying this Sortie.
+        required: true
+      tags:
+      - sorties
+      security:
+      - jwtAuth: []
+      - Bearer: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sortie'
+          description: ''
+components:
+  schemas:
+    AffecterCoupleInputRequest:
+      type: object
+      properties:
+        couple_id:
+          type: string
+          format: uuid
+      required:
+      - couple_id
+    AffecterPigeonInputRequest:
+      type: object
+      properties:
+        pigeon_id:
+          type: string
+          format: uuid
+      required:
+      - pigeon_id
+    AuthenticatedResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+      required:
+      - tokens
+      - user
+    Cage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        numero:
+          type: string
+          maxLength: 20
+        nom:
+          type: string
+          maxLength: 100
+        superficie:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        description:
+          type: string
+        statut_occupation:
+          allOf:
+          - $ref: '#/components/schemas/StatutOccupationEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Mis à jour le
+      required:
+      - created_at
+      - id
+      - numero
+      - statut_occupation
+      - updated_at
+    CageCreate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        numero:
+          type: string
+          maxLength: 20
+        nom:
+          type: string
+          maxLength: 100
+        superficie:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        description:
+          type: string
+      required:
+      - id
+      - numero
+    CageCreateRequest:
+      type: object
+      properties:
+        numero:
+          type: string
+          minLength: 1
+          maxLength: 20
+        nom:
+          type: string
+          maxLength: 100
+        superficie:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        description:
+          type: string
+      required:
+      - numero
+    CageRequest:
+      type: object
+      properties:
+        numero:
+          type: string
+          minLength: 1
+          maxLength: 20
+        nom:
+          type: string
+          maxLength: 100
+        superficie:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        description:
+          type: string
+      required:
+      - numero
+    CoupleCreate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        male_id:
+          type: string
+          format: uuid
+          title: Identifiant
+        femelle_id:
+          type: string
+          format: uuid
+          title: Identifiant
+        date_formation:
+          type: string
+          format: date
+      required:
+      - date_formation
+      - femelle_id
+      - id
+      - male_id
+    CoupleCreateRequest:
+      type: object
+      properties:
+        male_id:
+          type: string
+          format: uuid
+          title: Identifiant
+        femelle_id:
+          type: string
+          format: uuid
+          title: Identifiant
+        date_formation:
+          type: string
+          format: date
+      required:
+      - date_formation
+      - femelle_id
+      - male_id
+    CoupleList:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        male:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          readOnly: true
+        femelle:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          readOnly: true
+        date_formation:
+          type: string
+          format: date
+          readOnly: true
+        date_dissolution:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        statut:
+          allOf:
+          - $ref: '#/components/schemas/CoupleListStatutEnum'
+          readOnly: true
+        nb_reproductions:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+      required:
+      - created_at
+      - date_dissolution
+      - date_formation
+      - femelle
+      - id
+      - male
+      - nb_reproductions
+      - statut
+    CoupleListStatutEnum:
+      enum:
+      - ACTIF
+      - DISSOUS
+      type: string
+      description: |-
+        * `ACTIF` - Actif
+        * `DISSOUS` - Dissous
+    CoupleRompreRequest:
+      type: object
+      properties:
+        date_dissolution:
+          type: string
+          format: date
+      required:
+      - date_dissolution
+    CreerPigeonneauxInputRequest:
+      type: object
+      description: Payload pour POST /reproductions/<id>/pigeonneaux/ (US-REP-02).
+      properties:
+        pigeonneaux:
+          type: array
+          items:
+            $ref: '#/components/schemas/PigeonneauInputRequest'
+      required:
+      - pigeonneaux
+    DashboardStats:
+      type: object
+      description: Serializer pour les statistiques du dashboard.
+      properties:
+        pigeons:
+          type: object
+          additionalProperties:
+            type: integer
+        cages:
+          type: object
+          additionalProperties:
+            type: integer
+        couples_actifs:
+          type: integer
+        dernieres_reproductions:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - cages
+      - couples_actifs
+      - dernieres_reproductions
+      - pigeons
+    DecesInputRequest:
+      type: object
+      description: US-SOR-02 — date obligatoire, cause optionnelle.
+      properties:
+        date_sortie:
+          type: string
+          format: date
+        cause:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - date_sortie
+    EnrollmentResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        challenge_token:
+          type: string
+        provisioning_uri:
+          type: string
+        qr_code_data_uri:
+          type: string
+      required:
+      - challenge_token
+      - provisioning_uri
+      - qr_code_data_uri
+      - user
+    Genealogy:
+      type: object
+      description: Réponse de l'endpoint /pigeons/<id>/genealogy/ (US-REP-03).
+      properties:
+        pigeon:
+          $ref: '#/components/schemas/PigeonNested'
+        pere:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          nullable: true
+        mere:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          nullable: true
+        descendants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PigeonNested'
+      required:
+      - descendants
+      - mere
+      - pere
+      - pigeon
+    LoginRequest:
+      type: object
+      description: |-
+        Le mobile envoie ``{"encrypted_payload": "<base64-sealed-box>"}``.
+
+        On expose ``validated_payload`` (dict) après déchiffrement. Les sous-classes
+        déclarent leurs propres règles de validation via ``inner_serializer_class``.
+      properties:
+        encrypted_payload:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 4096
+      required:
+      - encrypted_payload
+    LoginStep1Response:
+      type: object
+      properties:
+        state:
+          type: string
+          default: TWO_FACTOR_REQUIRED
+        challenge_token:
+          type: string
+      required:
+      - challenge_token
+    LogoutRequest:
+      type: object
+      description: Body de POST /auth/logout/ — un refresh token à blacklist.
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    OccupationCouple:
+      type: object
+      description: Détail occupant couple dans la visualisation volière.
+      properties:
+        id:
+          type: string
+          format: uuid
+        male_bague:
+          type: string
+        femelle_bague:
+          type: string
+      required:
+      - femelle_bague
+      - id
+      - male_bague
+    OccupationPigeon:
+      type: object
+      description: Détail occupant pigeon dans la visualisation volière.
+      properties:
+        id:
+          type: string
+          format: uuid
+        bague:
+          type: string
+        sexe:
+          type: string
+        race:
+          type: string
+      required:
+      - bague
+      - id
+      - race
+      - sexe
+    PaginatedCageList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cage'
+    PaginatedCoupleListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoupleList'
+    PaginatedPigeonListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PigeonList'
+    PaginatedReproductionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reproduction'
+    PaginatedSortieList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sortie'
+    PaginatedVolereCageList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolereCage'
+    PatchedCageRequest:
+      type: object
+      properties:
+        numero:
+          type: string
+          minLength: 1
+          maxLength: 20
+        nom:
+          type: string
+          maxLength: 100
+        superficie:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        description:
+          type: string
+    PatchedPigeonUpdateRequest:
+      type: object
+      description: Modification (US-PIG-03) — bague immuable (RM-P01), pigeon ACTIF
+        uniquement.
+      properties:
+        race:
+          type: string
+          minLength: 1
+          maxLength: 100
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+    PerteInputRequest:
+      type: object
+      description: US-SOR-03 — date obligatoire, circonstance optionnelle.
+      properties:
+        date_sortie:
+          type: string
+          format: date
+        circonstance:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - date_sortie
+    PigeonCreate:
+      type: object
+      description: Création (US-PIG-01) — bague unique, champs obligatoires.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        bague:
+          type: string
+          maxLength: 50
+        sexe:
+          $ref: '#/components/schemas/SexeEnum'
+        race:
+          type: string
+          maxLength: 100
+        date_naissance:
+          type: string
+          format: date
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+      required:
+      - bague
+      - date_naissance
+      - id
+      - race
+      - sexe
+    PigeonCreateRequest:
+      type: object
+      description: Création (US-PIG-01) — bague unique, champs obligatoires.
+      properties:
+        bague:
+          type: string
+          minLength: 1
+          maxLength: 50
+        sexe:
+          $ref: '#/components/schemas/SexeEnum'
+        race:
+          type: string
+          minLength: 1
+          maxLength: 100
+        date_naissance:
+          type: string
+          format: date
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+      required:
+      - bague
+      - date_naissance
+      - race
+      - sexe
+    PigeonDetail:
+      type: object
+      description: Fiche complète (US-PIG-02) — parents directs imbriqués, descendants
+        ailleurs.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        bague:
+          type: string
+          maxLength: 50
+        sexe:
+          $ref: '#/components/schemas/SexeEnum'
+        race:
+          type: string
+          maxLength: 100
+        date_naissance:
+          type: string
+          format: date
+        age_jours:
+          type: integer
+          readOnly: true
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+        statut:
+          allOf:
+          - $ref: '#/components/schemas/Statut450Enum'
+          readOnly: true
+        pere:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          readOnly: true
+        mere:
+          allOf:
+          - $ref: '#/components/schemas/PigeonNested'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Mis à jour le
+      required:
+      - age_jours
+      - bague
+      - created_at
+      - date_naissance
+      - id
+      - mere
+      - pere
+      - race
+      - sexe
+      - statut
+      - updated_at
+    PigeonList:
+      type: object
+      description: Représentation pour la liste — pas d'imbrications coûteuses.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        bague:
+          type: string
+          readOnly: true
+        sexe:
+          allOf:
+          - $ref: '#/components/schemas/SexeEnum'
+          readOnly: true
+        race:
+          type: string
+          readOnly: true
+        date_naissance:
+          type: string
+          format: date
+          readOnly: true
+        age_jours:
+          type: integer
+          readOnly: true
+        statut:
+          allOf:
+          - $ref: '#/components/schemas/Statut450Enum'
+          readOnly: true
+        couleur:
+          type: string
+          readOnly: true
+        photo_url:
+          type: string
+          readOnly: true
+      required:
+      - age_jours
+      - bague
+      - couleur
+      - date_naissance
+      - id
+      - photo_url
+      - race
+      - sexe
+      - statut
+    PigeonNested:
+      type: object
+      description: Représentation minimaliste utilisée en imbriqué (parents, occupant
+        cage…).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        bague:
+          type: string
+          readOnly: true
+        sexe:
+          allOf:
+          - $ref: '#/components/schemas/SexeEnum'
+          readOnly: true
+        race:
+          type: string
+          readOnly: true
+        statut:
+          allOf:
+          - $ref: '#/components/schemas/Statut450Enum'
+          readOnly: true
+      required:
+      - bague
+      - id
+      - race
+      - sexe
+      - statut
+    PigeonUpdate:
+      type: object
+      description: Modification (US-PIG-03) — bague immuable (RM-P01), pigeon ACTIF
+        uniquement.
+      properties:
+        race:
+          type: string
+          maxLength: 100
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+      required:
+      - race
+    PigeonUpdateRequest:
+      type: object
+      description: Modification (US-PIG-03) — bague immuable (RM-P01), pigeon ACTIF
+        uniquement.
+      properties:
+        race:
+          type: string
+          minLength: 1
+          maxLength: 100
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        photo_url:
+          type: string
+      required:
+      - race
+    PigeonneauInputRequest:
+      type: object
+      properties:
+        bague:
+          type: string
+          minLength: 1
+          maxLength: 50
+        sexe:
+          type: string
+          minLength: 1
+          maxLength: 10
+        race:
+          type: string
+          maxLength: 100
+        date_naissance:
+          type: string
+          format: date
+          nullable: true
+        couleur:
+          type: string
+          maxLength: 100
+        poids:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+      required:
+      - bague
+      - sexe
+    PublicKeyResponse:
+      type: object
+      properties:
+        public_key:
+          type: string
+        algorithm:
+          type: string
+          default: x25519-sealed-box
+      required:
+      - public_key
+    RegisterRequest:
+      type: object
+      description: |-
+        Le mobile envoie ``{"encrypted_payload": "<base64-sealed-box>"}``.
+
+        On expose ``validated_payload`` (dict) après déchiffrement. Les sous-classes
+        déclarent leurs propres règles de validation via ``inner_serializer_class``.
+      properties:
+        encrypted_payload:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 4096
+      required:
+      - encrypted_payload
+    Reproduction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        couple:
+          type: string
+          format: uuid
+          title: Identifiant
+        date_ponte:
+          type: string
+          format: date
+        date_eclosion:
+          type: string
+          format: date
+          nullable: true
+        nb_pigeonneaux:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+      required:
+      - couple
+      - created_at
+      - date_ponte
+      - id
+    ReproductionCreate:
+      type: object
+      description: US-REP-01.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        date_ponte:
+          type: string
+          format: date
+        date_eclosion:
+          type: string
+          format: date
+          nullable: true
+        nb_pigeonneaux:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        notes:
+          type: string
+      required:
+      - date_ponte
+      - id
+    ReproductionCreateRequest:
+      type: object
+      description: US-REP-01.
+      properties:
+        date_ponte:
+          type: string
+          format: date
+        date_eclosion:
+          type: string
+          format: date
+          nullable: true
+        nb_pigeonneaux:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        notes:
+          type: string
+      required:
+      - date_ponte
+    SexeEnum:
+      enum:
+      - MALE
+      - FEMALE
+      type: string
+      description: |-
+        * `MALE` - Mâle
+        * `FEMALE` - Femelle
+    Sortie:
+      type: object
+      description: Lecture seule — les sorties sont irréversibles (RM-S04).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        pigeon:
+          type: string
+          format: uuid
+          title: Identifiant
+          readOnly: true
+        type_sortie:
+          allOf:
+          - $ref: '#/components/schemas/TypeSortieEnum'
+          readOnly: true
+        date_sortie:
+          type: string
+          format: date
+          readOnly: true
+        prix:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+        acheteur:
+          type: string
+          readOnly: true
+        cause:
+          type: string
+          readOnly: true
+        circonstance:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+      required:
+      - acheteur
+      - cause
+      - circonstance
+      - created_at
+      - date_sortie
+      - id
+      - pigeon
+      - prix
+      - type_sortie
+    Statut450Enum:
+      enum:
+      - ACTIF
+      - VENDU
+      - MORT
+      - PERDU
+      type: string
+      description: |-
+        * `ACTIF` - Actif
+        * `VENDU` - Vendu
+        * `MORT` - Mort
+        * `PERDU` - Perdu
+    StatutOccupationEnum:
+      enum:
+      - LIBRE
+      - OCCUPE_PIGEON
+      - OCCUPE_COUPLE
+      type: string
+      description: |-
+        * `LIBRE` - Libre
+        * `OCCUPE_PIGEON` - Occupée par un pigeon
+        * `OCCUPE_COUPLE` - Occupée par un couple
+    TOTPVerifyRequest:
+      type: object
+      description: Étape 2 du login + confirmation d'enrôlement. Code 6 chiffres +
+        challenge.
+      properties:
+        challenge_token:
+          type: string
+          minLength: 1
+          maxLength: 512
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          pattern: ^\d{6}$
+      required:
+      - challenge_token
+      - code
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    TypeSortieEnum:
+      enum:
+      - VENTE
+      - DECES
+      - PERTE
+      type: string
+      description: |-
+        * `VENTE` - Vente
+        * `DECES` - Décès
+        * `PERTE` - Perte
+    User:
+      type: object
+      description: Représentation publique d'un utilisateur (pas de mot de passe,
+        jamais).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Identifiant
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Adresse email
+          description: Identifiant de connexion. Insensible à la casse.
+        first_name:
+          type: string
+          readOnly: true
+          title: Prénom
+        last_name:
+          type: string
+          readOnly: true
+          title: Nom
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Actif
+          description: Désactive le compte sans suppression (RGPD-friendly).
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Créé le
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Mis à jour le
+      required:
+      - created_at
+      - email
+      - first_name
+      - id
+      - is_active
+      - last_name
+      - updated_at
+    VenteInputRequest:
+      type: object
+      description: US-SOR-01 — date, prix, acheteur obligatoires.
+      properties:
+        date_sortie:
+          type: string
+          format: date
+        prix:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        acheteur:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - acheteur
+      - date_sortie
+      - prix
+    VolereCage:
+      type: object
+      description: Une case de la grille de visualisation (US-CAG-01).
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: string
+        nom:
+          type: string
+        statut_occupation:
+          type: string
+        color:
+          type: string
+        pigeon:
+          allOf:
+          - $ref: '#/components/schemas/OccupationPigeon'
+          nullable: true
+        couple:
+          allOf:
+          - $ref: '#/components/schemas/OccupationCouple'
+          nullable: true
+      required:
+      - color
+      - couple
+      - id
+      - nom
+      - numero
+      - pigeon
+      - statut_occupation
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtenu via /api/v1/auth/login/
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: auth
+  description: Authentification JWT + 2FA (TOTP)
+- name: dashboard
+  description: KPIs et statistiques agrégées
+- name: pigeons
+  description: Gestion des pigeons et généalogie
+- name: cages
+  description: Cages et occupations
+- name: couples
+  description: Formation et dissolution des couples
+- name: reproductions
+  description: Reproductions et pigeonneaux
+- name: sorties
+  description: Sorties (vente/décès/perte)
+externalDocs:
+  description: Documentation complète du projet
+  url: https://github.com/SerigneMourtallaSyll/kaff-GUI-API

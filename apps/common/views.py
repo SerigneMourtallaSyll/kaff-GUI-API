@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,14 +21,31 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
+class DashboardStatsSerializer(serializers.Serializer):
+    """Serializer pour les statistiques du dashboard."""
+
+    pigeons = serializers.DictField(child=serializers.IntegerField())
+    cages = serializers.DictField(child=serializers.IntegerField())
+    couples_actifs = serializers.IntegerField()
+    dernieres_reproductions = serializers.ListField(child=serializers.DictField())
+
+
 class DashboardView(APIView):
     """Statistiques agrégées en quelques requêtes — pas de N+1."""
 
     permission_classes = [IsAuthenticated]
+    serializer_class = DashboardStatsSerializer
 
-    @extend_schema(tags=["dashboard"])
+    @extend_schema(
+        tags=["dashboard"],
+        responses={200: DashboardStatsSerializer},
+        description="Retourne les statistiques agrégées de la volière",
+    )
     def get(self, request: Request) -> Response:
         user = request.user
+        # Type guard pour mypy
+        if not user.is_authenticated:
+            return Response({"detail": "Authentication required"}, status=401)
 
         pigeons_stats = Pigeon.objects.filter(user=user, deleted_at__isnull=True).aggregate(
             actifs=Count("id", filter=Q(statut=PigeonStatut.ACTIF)),

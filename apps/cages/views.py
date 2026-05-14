@@ -47,7 +47,12 @@ class CageViewSet(viewsets.ModelViewSet):
     ordering = ("numero",)
 
     def get_queryset(self) -> QuerySet[Cage]:
-        return Cage.objects.filter(user=self.request.user).order_by("numero")
+        # Pour la génération du schéma OpenAPI
+        if getattr(self, "swagger_fake_view", False):
+            return Cage.objects.none()
+        user = self.request.user
+        assert user.is_authenticated  # Type guard pour mypy (IsAuthenticated garantit cela)
+        return Cage.objects.filter(user=user).order_by("numero")
 
     def get_serializer_class(self):  # type: ignore[no-untyped-def]
         if getattr(self, "action", None) == "create":

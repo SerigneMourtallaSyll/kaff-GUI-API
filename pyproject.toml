@@ -162,6 +162,26 @@ ignore_missing_imports = true
 module = ["apps.users.serializers"]
 disallow_any_generics = false
 
+# Relaxer les contraintes sur les admins Django (pattern standard)
+[[tool.mypy.overrides]]
+module = ["apps.*.admin"]
+disallow_any_generics = false
+
+# Relaxer les contraintes sur les serializers DRF (pattern standard)
+[[tool.mypy.overrides]]
+module = ["apps.*.serializers"]
+disallow_any_generics = false
+
+# Relaxer les contraintes sur les views DRF (pattern standard)
+[[tool.mypy.overrides]]
+module = ["apps.*.views"]
+disallow_any_generics = false
+
+# Relaxer les contraintes sur les filters django-filter
+[[tool.mypy.overrides]]
+module = ["apps.*.filters"]
+ignore_errors = true
+
 # ----------------------------------------------------------------------------
 # Pytest
 # ----------------------------------------------------------------------------

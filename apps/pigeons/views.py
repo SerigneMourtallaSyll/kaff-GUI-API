@@ -47,10 +47,13 @@ class PigeonViewSet(
     ordering = ("-created_at",)
 
     def get_queryset(self) -> QuerySet[Pigeon]:
+        # Pour la génération du schéma OpenAPI
+        if getattr(self, "swagger_fake_view", False):
+            return Pigeon.objects.none()
+        user = self.request.user
+        assert user.is_authenticated  # Type guard pour mypy (IsAuthenticated garantit cela)
         return (
-            Pigeon.objects.filter(user=self.request.user)
-            .select_related("pere", "mere")
-            .order_by("-created_at")
+            Pigeon.objects.filter(user=user).select_related("pere", "mere").order_by("-created_at")
         )
 
     def get_serializer_class(self):  # type: ignore[no-untyped-def]

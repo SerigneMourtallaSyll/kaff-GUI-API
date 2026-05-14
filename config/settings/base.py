@@ -265,6 +265,19 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Kàff GUI API",
     "DESCRIPTION": (
         "API REST de gestion de volière colombophile.\n\n"
+        "## Authentification\n\n"
+        "L'API utilise JWT (JSON Web Tokens) avec authentification 2FA (TOTP).\n\n"
+        "### Flux d'authentification\n\n"
+        "1. **Inscription** : `POST /api/v1/auth/register/` - Retourne un QR code TOTP\n"
+        "2. **Confirmation TOTP** : `POST /api/v1/auth/2fa/confirm/` - Active le compte\n"
+        "3. **Connexion** : `POST /api/v1/auth/login/` - Retourne access + refresh tokens\n"
+        "4. **Utilisation** : Ajouter `Authorization: Bearer <access_token>` dans les headers\n"
+        "5. **Refresh** : `POST /api/v1/auth/token/refresh/` - Obtenir un nouveau access token\n\n"
+        "### Sécurité\n\n"
+        "- Tokens access : 15 minutes de validité\n"
+        "- Tokens refresh : 7 jours de validité avec rotation\n"
+        "- Rate limiting : 300 req/min pour utilisateurs authentifiés\n"
+        "- Protection brute-force : 5 tentatives max, cooldown 5 min\n\n"
         "Voir le cahier des charges et les user stories pour le détail métier."
     ),
     "VERSION": "1.0.0",
@@ -275,17 +288,40 @@ SPECTACULAR_SETTINGS = {
         "deepLinking": True,
         "persistAuthorization": True,
         "displayOperationId": True,
+        "filter": True,
+        "tryItOutEnabled": True,
     },
     "SECURITY": [{"Bearer": []}],
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "Bearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT access token obtenu via /api/v1/auth/login/",
+            }
+        }
+    },
     "TAGS": [
-        {"name": "auth", "description": "Authentification JWT"},
+        {"name": "auth", "description": "Authentification JWT + 2FA (TOTP)"},
+        {"name": "dashboard", "description": "KPIs et statistiques agrégées"},
         {"name": "pigeons", "description": "Gestion des pigeons et généalogie"},
         {"name": "cages", "description": "Cages et occupations"},
         {"name": "couples", "description": "Formation et dissolution des couples"},
         {"name": "reproductions", "description": "Reproductions et pigeonneaux"},
         {"name": "sorties", "description": "Sorties (vente/décès/perte)"},
-        {"name": "dashboard", "description": "KPIs et statistiques"},
     ],
+    "CONTACT": {
+        "name": "Serigne Mourtalla Syll",
+        "email": "serignemourtallasyll86@gmail.com",
+    },
+    "LICENSE": {
+        "name": "Proprietary",
+    },
+    "EXTERNAL_DOCS": {
+        "description": "Documentation complète du projet",
+        "url": "https://github.com/SerigneMourtallaSyll/kaff-GUI-API",
+    },
 }
 
 # ---------------------------------------------------------------------------

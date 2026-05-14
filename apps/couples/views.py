@@ -36,8 +36,13 @@ class CoupleViewSet(
     ordering = ("-created_at",)
 
     def get_queryset(self) -> QuerySet[Couple]:
+        # Pour la génération du schéma OpenAPI
+        if getattr(self, "swagger_fake_view", False):
+            return Couple.objects.none()
+        user = self.request.user
+        assert user.is_authenticated  # Type guard pour mypy (IsAuthenticated garantit cela)
         return (
-            Couple.objects.filter(user=self.request.user)
+            Couple.objects.filter(user=user)
             .select_related("male", "femelle")
             .annotate(nb_reproductions=Count("reproductions"))
             .order_by("-created_at")

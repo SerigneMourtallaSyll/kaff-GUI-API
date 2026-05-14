@@ -37,8 +37,13 @@ class ReproductionViewSet(
     ordering = ("-date_ponte", "-created_at")
 
     def get_queryset(self) -> QuerySet[Reproduction]:
+        # Pour la génération du schéma OpenAPI
+        if getattr(self, "swagger_fake_view", False):
+            return Reproduction.objects.none()
+        user = self.request.user
+        assert user.is_authenticated  # Type guard pour mypy (IsAuthenticated garantit cela)
         return (
-            Reproduction.objects.filter(couple__user=self.request.user)
+            Reproduction.objects.filter(couple__user=user)
             .select_related("couple__male", "couple__femelle")
             .order_by("-date_ponte", "-created_at")
         )
