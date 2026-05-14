@@ -1,0 +1,77 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  # ---------- Hygiène fichiers ----------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^.*\.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ---------- Ruff : lint + format (remplace black, isort, flake8) ----------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # Note: mypy est défini en hook local (cf. plus bas) pour réutiliser le venv
+  # du projet (uv) et éviter de redéclarer toutes les dépendances Django dans
+  # un env isolé. Le typage reste vérifié à chaque commit.
+
+  # ---------- Bandit : security linter (OWASP) ----------
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: ^.*/tests/.*$
+
+  # ---------- Gitleaks : détection de secrets ----------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # ---------- Hooks locaux (réutilisent le venv uv du projet) ----------
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict typing)
+        entry: uv run mypy apps config
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+
+      - id: django-check
+        name: Django system checks
+        entry: uv run python manage.py check
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]
+
+      - id: django-makemigrations-check
+        name: Django — vérifier les migrations manquantes
+        entry: uv run python manage.py makemigrations --check --dry-run
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]
+
+  # Note: commitizen retiré — commitlint (via husky) gère la validation des messages.

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Ensure uv (Astral) is on PATH — installed in $HOME/.local/bin on Windows/Linux/macOS.
+export PATH="$HOME/.local/bin:$PATH"
+
+uv run pre-commit run --hook-stage pre-commit

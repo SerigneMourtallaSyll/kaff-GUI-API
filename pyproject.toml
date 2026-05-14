@@ -1,0 +1,213 @@
+[project]
+name = "kaff-gui-api"
+version = "0.1.0"
+description = "Kàff GUI — API REST de gestion de volière (Baay Pitàq Colombophile Management System)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+authors = [
+    { name = "Serigne Mourtalla Syll", email = "serignemourtallasyll86@gmail.com" },
+]
+
+dependencies = [
+    # Core framework
+    "django>=5.1,<5.2",
+    "djangorestframework>=3.15,<3.17",
+    "django-environ>=0.11.2",
+
+    # Database
+    "psycopg[binary,pool]>=3.2,<4.0",
+
+    # Auth
+    "djangorestframework-simplejwt[crypto]>=5.3,<6.0",
+    "django-axes>=7.0,<8.0",                       # Brute-force protection (US-AUTH-01)
+    "argon2-cffi>=23.1",                           # Hash de mot de passe Argon2 (OWASP A02)
+
+    # API & filtering
+    "drf-spectacular>=0.28,<0.29",                 # OpenAPI 3 schema
+    "django-filter>=24.3",
+    "django-cors-headers>=4.6",
+
+    # Observability
+    "structlog>=24.4",
+    "django-structlog>=9.0",
+
+    # Production
+    "gunicorn>=23.0",
+    "whitenoise[brotli]>=6.8",
+]
+
+[dependency-groups]
+dev = [
+    # Linting & formatting (replaces black + isort + flake8)
+    "ruff>=0.8.0",
+
+    # Type checking — mypy pinned <2.0 (django-stubs 6.x pas encore compatible avec mypy 2)
+    "mypy>=1.13,<2.0",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+
+    # Testing
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "pytest-mock>=3.14",
+    "pytest-xdist>=3.6",
+    "factory-boy>=3.3",
+    "faker>=33.0",
+
+    # Security & quality
+    "bandit[toml]>=1.8",
+    "pip-audit>=2.7",
+
+    # Pre-commit & commits
+    "pre-commit>=4.0",
+    "commitizen>=4.0",
+
+    # Dev experience
+    "django-extensions>=3.2",
+    "ipython>=8.30",
+    "django-debug-toolbar>=4.4",
+]
+
+# ----------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces black + isort + flake8 + pyupgrade)
+# ----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "*/migrations/*",
+    ".venv",
+    "staticfiles",
+    "media",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "DJ",     # flake8-django
+    "UP",     # pyupgrade
+    "S",      # flake8-bandit (security)
+    "N",      # pep8-naming
+    "SIM",    # flake8-simplify
+    "TCH",    # type-checking
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "S101",   # assert (pytest uses asserts)
+    "S105",   # hardcoded password string (false positives on field names)
+    "S106",   # hardcoded password func arg
+    "RUF012", # mutable class attrs — faux positif sur Django Meta / REQUIRED_FIELDS / fields
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "DJ"]
+"**/test_*.py" = ["S", "DJ"]
+"**/settings/*.py" = ["S105", "S106", "F401", "F403", "F405"]
+"manage.py" = ["S"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ----------------------------------------------------------------------------
+# Mypy — strict type checking (mirroring the mobile's strict TypeScript)
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+exclude = [
+    "migrations/",
+    "tests/",
+    ".venv/",
+]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.development"
+
+[[tool.mypy.overrides]]
+module = ["environ.*", "debug_toolbar.*"]
+ignore_missing_imports = true
+
+# ----------------------------------------------------------------------------
+# Pytest
+# ----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.testing"
+python_files = ["test_*.py", "tests.py", "*_tests.py"]
+testpaths = ["apps", "tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--reuse-db",
+    "--tb=short",
+    "-ra",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: integration tests requiring DB",
+    "unit: pure unit tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:django.*",
+    "ignore::DeprecationWarning:rest_framework.*",
+]
+
+[tool.coverage.run]
+source = ["apps", "config"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/test_*.py",
+    "manage.py",
+    "config/asgi.py",
+    "config/wsgi.py",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+# ----------------------------------------------------------------------------
+# Bandit — security linter (OWASP A03, A06)
+# ----------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101"]  # assert in tests
+
+# ----------------------------------------------------------------------------
+# Commitizen — Conventional Commits (cohérent avec le mobile)
+# ----------------------------------------------------------------------------
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+update_changelog_on_bump = true
