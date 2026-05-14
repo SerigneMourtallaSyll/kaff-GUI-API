@@ -35,7 +35,7 @@ class BusinessRuleError(exceptions.APIException):
     deux pigeons du même sexe, supprimer une cage occupée, etc.
     """
 
-    status_code = status.HTTP_409_CONFLICT
+    status_code: int = status.HTTP_409_CONFLICT
     default_detail = "Cette opération viole une règle métier."
     default_code = "business_rule_violation"
 
@@ -53,9 +53,15 @@ _EXCEPTION_CODE_MAP: dict[type[Exception], str] = {
 
 
 def _resolve_code(exc: Exception) -> str:
-    for klass, code in _EXCEPTION_CODE_MAP.items():
+    # 1. Préférer l'attribut `default_code` de l'exception (sous-classes spécifiques
+    #    comme DecryptionError surchargent ainsi le code parent BusinessRuleError).
+    code = getattr(exc, "default_code", None)
+    if isinstance(code, str) and code:
+        return code
+    # 2. Sinon fallback sur la map de classes (matching par isinstance).
+    for klass, mapped in _EXCEPTION_CODE_MAP.items():
         if isinstance(exc, klass):
-            return code
+            return mapped
     return "internal_error"
 
 

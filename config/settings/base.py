@@ -72,6 +72,10 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "axes",
     "django_structlog",
+    # 2FA TOTP (RFC 6238)
+    "django_otp",
+    "django_otp.plugins.otp_totp",
+    "django_otp.plugins.otp_static",  # codes de récupération
 ]
 
 LOCAL_APPS = [
@@ -97,6 +101,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",  # APRÈS auth, AVANT toutes les vues
     "django_structlog.middlewares.RequestMiddleware",  # logs structurés request_id
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -226,7 +231,10 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "60/min",
         "user": "300/min",
-        "login": "10/min",  # custom throttle pour le login (cf. apps.users.views)
+        "login": "10/min",  # POST /auth/login
+        "totp_verify": "10/min",  # POST /auth/2fa/verify
+        "register": "5/min",  # POST /auth/register
+        "public_key": "30/min",  # GET  /auth/public-key
     },
     "EXCEPTION_HANDLER": "apps.common.exceptions.api_exception_handler",
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
@@ -246,7 +254,7 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
-    "TOKEN_TYPE_CLAIM": "token_type",
+    "TOKEN_TYPE_CLAIM": "token_type",  # nosec B105 — nom de claim JWT, pas un secret
     "JTI_CLAIM": "jti",
 }
 
@@ -364,6 +372,30 @@ structlog.configure(
     wrapper_class=structlog.stdlib.BoundLogger,
     cache_logger_on_first_use=True,
 )
+
+# ---------------------------------------------------------------------------
+# Chiffrement applicatif des credentials (X25519 sealed box via PyNaCl)
+# ---------------------------------------------------------------------------
+# Clés en base64 (44 caractères) — générées via:
+#   uv run python -c "from nacl.public import PrivateKey; import base64
+#   sk = PrivateKey.generate(); print('PRIV=', base64.b64encode(bytes(sk)).decode())
+#   print('PUB=', base64.b64encode(bytes(sk.public_key)).decode())"
+# Si non définies, generated_keypair() en dev (rotation à chaque restart) — voir
+# apps.users.services.keypair.
+APP_CRYPTO_PRIVATE_KEY = env("APP_CRYPTO_PRIVATE_KEY", default="")
+APP_CRYPTO_PUBLIC_KEY = env("APP_CRYPTO_PUBLIC_KEY", default="")
+
+# ---------------------------------------------------------------------------
+# Challenge token (étape 1 → 2 du login 2FA) — Django signing
+# ---------------------------------------------------------------------------
+AUTH_CHALLENGE_TOKEN_TTL_SECONDS = 300  # 5 min
+# Salt public — sert à isoler le domaine de signing, pas un secret (cf. Django docs).
+AUTH_CHALLENGE_TOKEN_SALT = "kaff.auth.challenge.v1"  # nosec B105
+
+# ---------------------------------------------------------------------------
+# django-otp — TOTP
+# ---------------------------------------------------------------------------
+OTP_TOTP_ISSUER = "Kàff GUI"
 
 # ---------------------------------------------------------------------------
 # Sécurité — défaut sain, durci en production.py (OWASP § 5)

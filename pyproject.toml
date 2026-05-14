@@ -22,6 +22,13 @@ dependencies = [
     "djangorestframework-simplejwt[crypto]>=5.3,<6.0",
     "django-axes>=7.0,<8.0",                       # Brute-force protection (US-AUTH-01)
     "argon2-cffi>=23.1",                           # Hash de mot de passe Argon2 (OWASP A02)
+    "django-otp>=1.5",                             # 2FA — TOTP devices + middleware
+    "pyotp>=2.9",                                  # TOTP RFC 6238
+    "qrcode[pil]>=8.0",                            # QR code pour enrôlement TOTP
+    "pynacl>=1.5",                                 # libsodium sealed box (X25519 + XSalsa20)
+
+    # Performance
+    "django-zen-queries>=2.1",                     # Détection N+1 stricte en test
 
     # API & filtering
     "drf-spectacular>=0.28,<0.29",                 # OpenAPI 3 schema
@@ -55,6 +62,7 @@ dev = [
     "pytest-xdist>=3.6",
     "factory-boy>=3.3",
     "faker>=33.0",
+    "freezegun>=1.5",
 
     # Security & quality
     "bandit[toml]>=1.8",
@@ -108,8 +116,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S", "DJ"]
-"**/test_*.py" = ["S", "DJ"]
+"**/tests/**" = ["S", "DJ", "TC001", "TC002", "TC003"]
+"**/test_*.py" = ["S", "DJ", "TC001", "TC002", "TC003"]
 "**/settings/*.py" = ["S105", "S106", "F401", "F403", "F405"]
 "manage.py" = ["S"]
 
@@ -145,8 +153,14 @@ exclude = [
 django_settings_module = "config.settings.development"
 
 [[tool.mypy.overrides]]
-module = ["environ.*", "debug_toolbar.*"]
+module = ["environ.*", "debug_toolbar.*", "qrcode.*", "django_otp.*", "nacl.*"]
 ignore_missing_imports = true
+
+# DRF Serializer est générique dans les stubs mais on n'utilise pas l'instance type
+# côté write — relaxer pour les serializers d'entrée/sortie pures.
+[[tool.mypy.overrides]]
+module = ["apps.users.serializers"]
+disallow_any_generics = false
 
 # ----------------------------------------------------------------------------
 # Pytest
@@ -171,6 +185,8 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning:django.*",
     "ignore::DeprecationWarning:rest_framework.*",
+    "ignore::UserWarning:whitenoise.*",
+    "ignore::DeprecationWarning:pkg_resources.*",
 ]
 
 [tool.coverage.run]

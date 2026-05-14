@@ -1,18 +1,29 @@
-"""
-URLs du module Authentification (US-AUTH-01/02/03).
-
-À implémenter dans la prochaine itération :
-- POST /api/v1/auth/register/
-- POST /api/v1/auth/login/    (TokenObtainPairView custom avec axes)
-- POST /api/v1/auth/refresh/
-- POST /api/v1/auth/logout/   (blacklist refresh)
-- GET  /api/v1/auth/me/
-"""
+"""URLs du module Authentification (US-AUTH-01/02/03 + 2FA TOTP + chiffrement applicatif)."""
 
 from __future__ import annotations
 
+from django.urls import path
+
+from apps.users.views import (
+    LoginView,
+    LogoutView,
+    MeView,
+    PublicKeyView,
+    RefreshView,
+    RegisterConfirmView,
+    RegisterView,
+    TOTPVerifyView,
+)
+
 app_name = "users"
 
-urlpatterns: list[object] = [
-    # à compléter avec les vues d'auth dans la prochaine étape
+urlpatterns = [
+    path("public-key/", PublicKeyView.as_view(), name="public-key"),
+    path("register/", RegisterView.as_view(), name="register"),
+    path("register/confirm/", RegisterConfirmView.as_view(), name="register-confirm"),
+    path("login/", LoginView.as_view(), name="login"),
+    path("2fa/verify/", TOTPVerifyView.as_view(), name="2fa-verify"),
+    path("refresh/", RefreshView.as_view(), name="refresh"),
+    path("logout/", LogoutView.as_view(), name="logout"),
+    path("me/", MeView.as_view(), name="me"),
 ]
