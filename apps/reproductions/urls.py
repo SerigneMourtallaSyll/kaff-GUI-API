@@ -1,7 +1,14 @@
-"""URLs du module reproductions — à compléter."""
+"""URLs Reproductions."""
 
 from __future__ import annotations
 
+from rest_framework.routers import DefaultRouter
+
+from apps.reproductions.views import ReproductionViewSet
+
 app_name = "reproductions"
 
-urlpatterns: list[object] = []
+router = DefaultRouter()
+router.register("", ReproductionViewSet, basename="reproduction")
+
+urlpatterns = router.urls

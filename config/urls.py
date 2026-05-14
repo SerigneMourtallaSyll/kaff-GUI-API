@@ -24,6 +24,7 @@ def health(_request: object) -> JsonResponse:
 
 api_v1_patterns = [
     path("auth/", include("apps.users.urls")),
+    path("", include("apps.common.urls")),  # Dashboard
     path("pigeons/", include("apps.pigeons.urls")),
     path("cages/", include("apps.cages.urls")),
     path("couples/", include("apps.couples.urls")),
