@@ -327,6 +327,11 @@ SPECTACULAR_SETTINGS = {
 # ---------------------------------------------------------------------------
 # CORS — restreint à la liste explicite (jamais "*")
 # ---------------------------------------------------------------------------
+# Pour les apps mobiles natives (React Native), les requêtes ne viennent pas d'une
+# origine web classique. En production, on peut soit :
+# 1. Autoriser toutes les origines (CORS_ALLOW_ALL_ORIGINS=True)
+# 2. Utiliser une liste blanche d'origines spécifiques
+CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=False)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
