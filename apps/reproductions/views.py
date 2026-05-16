@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 class ReproductionViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
     mixins.ListModelMixin,
     viewsets.GenericViewSet,
 ):
