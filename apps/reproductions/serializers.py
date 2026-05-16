@@ -9,6 +9,10 @@ from apps.reproductions.models import Reproduction
 
 
 class ReproductionSerializer(serializers.ModelSerializer):
+    # Add male and female bague for display
+    male_bague = serializers.CharField(source="couple.male.bague", read_only=True)
+    femelle_bague = serializers.CharField(source="couple.femelle.bague", read_only=True)
+
     class Meta:
         model = Reproduction
         fields = (
@@ -19,8 +23,10 @@ class ReproductionSerializer(serializers.ModelSerializer):
             "nb_pigeonneaux",
             "notes",
             "created_at",
+            "male_bague",
+            "femelle_bague",
         )
-        read_only_fields = ("id", "created_at")
+        read_only_fields = ("id", "created_at", "male_bague", "femelle_bague")
 
 
 class ReproductionCreateSerializer(serializers.ModelSerializer):
